@@ -98,25 +98,9 @@ def getNumWhiteRegions(features):
                 for n in getNeighbors(pixel):
                     stack.push(n)
 
-    return numRegions
-
-def getNumBlackPixels(features):
-    numBlackPixels = 0
-    for x in range(DIGIT_DATUM_WIDTH):
-        for y in range(DIGIT_DATUM_HEIGHT):
-            if features[(x, y)] == 1:
-                numBlackPixels += 1
-    return numBlackPixels
-
-def getWidth(features):
-    minX = DIGIT_DATUM_WIDTH
-    maxX = 0
-    for x in range(DIGIT_DATUM_WIDTH):
-        for y in range(DIGIT_DATUM_HEIGHT):
-            if features[(x, y)] == 1:
-                minX = min(x, minX)
-                maxX = max(x, maxX)
-    return maxX - minX
+    if numRegions > 1:
+        return 1
+    return 0
 
 def enhancedFeatureExtractorDigit(datum):
     """
@@ -132,8 +116,6 @@ def enhancedFeatureExtractorDigit(datum):
     features = basicFeatureExtractorDigit(datum)
 
     features["numRegions"] = getNumWhiteRegions(features)
-    features["numBlackPixels"] = getNumBlackPixels(features)
-    features["width"] = getWidth(features)
 
     return features
 
@@ -157,6 +139,7 @@ def basicFeatureExtractorPacman(state):
         features[action] = featureCounter
     return features, state.getLegalActions()
 
+
 def enhancedFeatureExtractorPacman(state):
     """
     Your feature extraction playground.
@@ -172,6 +155,41 @@ def enhancedFeatureExtractorPacman(state):
         features[action] = util.Counter(features[action], **enhancedPacmanFeatures(state, action))
     return features, state.getLegalActions()
 
+def distToClosest(pos, foodPositions):
+
+    bestDist = float("inf")
+    for foodPosition in foodPositions:
+        curDist = util.manhattanDistance(pos, foodPosition)
+        bestDist = min(bestDist, curDist)
+    return bestDist
+
+def distToClosestRealGhost(pos, ghostPositions, ghostStates):
+
+    bestDist = 100
+    for i in range(len(ghostPositions)):
+        ghostPosition = ghostPositions[i]
+        ghostTimer = ghostStates[i].scaredTimer
+        if ghostTimer < 3:
+            curDist = util.manhattanDistance(pos, ghostPosition)
+            bestDist = min(bestDist, curDist)
+
+    return bestDist
+
+def avgToClosest(pos, foodPositions, num):
+
+    pq = util.PriorityQueue()
+    for foodPosition in foodPositions:
+        dist = util.manhattanDistance(pos, foodPosition)
+        pq.push(dist, dist)
+
+    sum = 0.0
+    numAdded = 0
+    while not pq.isEmpty() and numAdded < num:
+        sum += pq.pop()
+        numAdded += 1.0
+    avg = sum/numAdded
+    return avg
+
 def enhancedPacmanFeatures(state, action):
     """
     For each state, this function is called with each legal action.
@@ -179,7 +197,52 @@ def enhancedPacmanFeatures(state, action):
     """
     features = util.Counter()
     "*** YOUR CODE HERE ***"
-    util.raiseNotDefined()
+    # util.raiseNotDefined()
+
+    nextState = state.generateSuccessor(0, action)
+
+    currPacmanPos = state.getPacmanPosition()
+    nextPacmanPos = nextState.getPacmanPosition()
+    nextX, nextY = nextPacmanPos
+
+    currGhostStates = state.getGhostStates()
+    nextGhostStates = nextState.getGhostStates()
+
+
+
+    currFood = state.getFood()
+    nextFood = nextState.getFood()
+    foodDist = distToClosest(currPacmanPos, currFood)
+    nextFoodDist = distToClosest(nextPacmanPos, nextFood)
+    features["closerToFood"] = 1 if nextFoodDist < foodDist else 0
+
+    currGhosts = state.getGhostPositions()
+    nextGhosts = nextState.getGhostPositions()
+    currGhostDist = distToClosest(currPacmanPos, currGhosts)
+    nextGhostDist = distToClosest(nextPacmanPos, nextGhosts)
+    features["closerToGhost"] = 1 if nextGhostDist - currGhostDist > 0 else 0 # Positive if further from ghosts
+
+
+    currCapsules = state.getCapsules()
+    nextCapsules = nextState.getCapsules()
+    features["capsuleEaten"] = 1 if len(nextCapsules) < len(currCapsules) else 0
+    currCapsuleDist = distToClosest(currPacmanPos, currCapsules)
+    nextCapsuleDist = distToClosest(nextPacmanPos, nextCapsules)
+    features["closerToCapsule"] = 1 if nextCapsuleDist < currCapsuleDist else 0
+
+
+    currScore = state.getScore()
+    nextScore = nextState.getScore()
+    scoreDiff = nextScore - currScore
+    features["scoreDiff"] = scoreDiff
+
+
+    currClosestReal = distToClosestRealGhost(currPacmanPos, currGhosts, currGhostStates)
+    nextClosestReal = distToClosestRealGhost(nextPacmanPos, nextGhosts, nextGhostStates)
+    realDiff = currClosestReal - nextClosestReal
+    features["diffReal"] = realDiff > 0
+
+
     return features
 
 
@@ -231,12 +294,6 @@ def analysis(classifier, guesses, testLabels, testData, rawTestData, printImage)
     #         print "Image: "
     #         print rawTestData[i]
     #         break
-
-    for i in range(10):
-        print "Image: "
-        print rawTestData[i]
-        print testData[i]["width"]
-        print "\n\n\n"
 
 ## =====================
 ## You don't have to modify any code below.
